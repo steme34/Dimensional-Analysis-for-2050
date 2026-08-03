@@ -1,268 +1,294 @@
-const unitFamilies = [
-  {
-    name: "length",
-    units: [
-      { symbol: "km", exponent: 3 },
-      { symbol: "m", exponent: 0 },
-      { symbol: "cm", exponent: -2 },
-      { symbol: "mm", exponent: -3 },
-      { symbol: "µm", exponent: -6 }
-    ]
-  },
-  {
-    name: "mass",
-    units: [
-      { symbol: "kg", exponent: 3 },
-      { symbol: "g", exponent: 0 },
-      { symbol: "mg", exponent: -3 },
-      { symbol: "µg", exponent: -6 }
-    ]
-  },
-  {
-    name: "volume",
-    units: [
-      { symbol: "kL", exponent: 3 },
-      { symbol: "L", exponent: 0 },
-      { symbol: "mL", exponent: -3 },
-      { symbol: "µL", exponent: -6 }
-    ]
-  }
-];
-
-const friendlyCoefficients = [
-  1.2, 1.5, 1.8, 2.4, 2.5, 3.2, 3.5, 4.2, 4.5, 5.6,
-  6.4, 6.8, 7.2, 7.5, 8.1, 8.4, 9.1, 12.5, 15, 18,
-  24, 25, 32, 45, 56, 64, 75, 81, 125, 250, 450, 750
-];
-
-const displayPowers = [-3, -2, -1, 0, 1, 2];
 const goal = 10;
 
 let score = 0;
 let questionNumber = 1;
 let currentProblem = null;
 let awaitingNext = false;
-let usedProblemKeys = new Set();
+let usedKeys = new Set();
 
 const problemEl = document.getElementById("problem");
-const targetUnitEl = document.getElementById("target-unit");
 const answerInput = document.getElementById("answer");
-const answerForm = document.getElementById("answer-form");
+const submitButton = document.getElementById("submit-button");
+const restartButton = document.getElementById("restart-button");
 const feedbackEl = document.getElementById("feedback");
 const scoreEl = document.getElementById("score");
 const questionNumberEl = document.getElementById("question-number");
-const nextButton = document.getElementById("next-button");
-const submitButton = document.getElementById("submit-button");
-const restartButton = document.getElementById("restart-button");
-const balloon = document.getElementById("balloon");
-const balloonWrap = document.getElementById("balloon-wrap");
-const progressMessage = document.getElementById("progress-message");
+const runnerEl = document.getElementById("runner");
+const distanceMarkersEl = document.getElementById("distance-markers");
+const progressFillEl = document.getElementById("progress-fill");
+const progressMessageEl = document.getElementById("progress-message");
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 function randomChoice(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function roundToPrecision(value, digits = 12) {
-  return Number.parseFloat(Number(value).toPrecision(digits));
-}
+function generateCoefficientText() {
+  const sigDigits = randomInt(2, 5);
+  let text = String(randomInt(1, 9));
 
-function formatNumber(value) {
-  if (value === 0) return "0";
-
-  const absolute = Math.abs(value);
-
-  if (absolute >= 1e7 || absolute < 1e-5) {
-    return value
-      .toExponential(6)
-      .replace(/\.?0+e/, "e")
-      .replace("e+", " × 10^")
-      .replace("e-", " × 10^-");
+  if (sigDigits > 1) {
+    text += ".";
+    for (let i = 1; i < sigDigits; i += 1) {
+      text += randomInt(0, 9);
+    }
   }
 
-  return value.toLocaleString("en-US", {
-    useGrouping: false,
-    maximumFractionDigits: 12
-  });
+  return text;
 }
 
-function conversionFactorText(fromUnit, toUnit) {
-  const exponentDifference = fromUnit.exponent - toUnit.exponent;
-  const factor = 10 ** Math.abs(exponentDifference);
+function toSuperscript(value) {
+  const map = {
+    "-": "⁻",
+    "+": "⁺",
+    "0": "⁰",
+    "1": "¹",
+    "2": "²",
+    "3": "³",
+    "4": "⁴",
+    "5": "⁵",
+    "6": "⁶",
+    "7": "⁷",
+    "8": "⁸",
+    "9": "⁹"
+  };
 
-  if (exponentDifference > 0) {
-    return `1 ${fromUnit.symbol} = ${formatNumber(factor)} ${toUnit.symbol}`;
+  return String(value)
+    .split("")
+    .map((character) => map[character] ?? character)
+    .join("");
+}
+
+function exactDecimalString(coefficientText, exponent) {
+  const [wholePart, fractionalPart = ""] = coefficientText.split(".");
+  const digits = `${wholePart}${fractionalPart}`;
+  const originalDecimalIndex = wholePart.length;
+  const newDecimalIndex = originalDecimalIndex + exponent;
+
+  if (newDecimalIndex <= 0) {
+    return `0.${"0".repeat(Math.abs(newDecimalIndex))}${digits}`;
   }
 
-  return `${formatNumber(factor)} ${fromUnit.symbol} = 1 ${toUnit.symbol}`;
+  if (newDecimalIndex >= digits.length) {
+    return `${digits}${"0".repeat(newDecimalIndex - digits.length)}`;
+  }
+
+  return `${digits.slice(0, newDecimalIndex)}.${digits.slice(newDecimalIndex)}`;
 }
 
-function makeProblemKey(problem) {
-  return `${problem.family}|${problem.value}|${problem.from}|${problem.to}`;
+function normalizeDecimalString(value) {
+  let normalized = value.trim().replace(/,/g, "");
+
+  if (normalized.startsWith(".")) {
+    normalized = `0${normalized}`;
+  }
+
+  if (normalized.startsWith("-.")) {
+    normalized = normalized.replace("-.", "-0.");
+  }
+
+  normalized = normalized.replace(/^(\d+)\.0+$/, "$1");
+
+  if (normalized.includes(".")) {
+    normalized = normalized.replace(/0+$/, "").replace(/\.$/, "");
+  }
+
+  normalized = normalized.replace(/^0+(?=\d)/, "");
+
+  if (normalized.startsWith(".")) {
+    normalized = `0${normalized}`;
+  }
+
+  return normalized || "0";
 }
 
 function generateProblem() {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const family = randomChoice(unitFamilies);
-    const fromUnit = randomChoice(family.units);
-    const possibleTargets = family.units.filter(
-      (unit) => unit.symbol !== fromUnit.symbol
-    );
-    const toUnit = randomChoice(possibleTargets);
+  for (let attempt = 0; attempt < 250; attempt += 1) {
+    const coefficientText = generateCoefficientText();
+    const exponent = randomChoice([
+      -9, -8, -7, -6, -5, -4, -3, -2,
+       2,  3,  4,  5,  6,  7,  8,  9
+    ]);
 
-    const coefficient = randomChoice(friendlyCoefficients);
-    const displayPower = randomChoice(displayPowers);
-    const value = roundToPrecision(coefficient * 10 ** displayPower);
-    const answer = roundToPrecision(
-      value * 10 ** (fromUnit.exponent - toUnit.exponent)
-    );
+    const answerText = exactDecimalString(coefficientText, exponent);
+    const key = `${coefficientText}|${exponent}|${answerText}`;
 
-    // Keep introductory questions readable while still allowing a wide range.
-    if (
-      value <= 0 ||
-      answer <= 0 ||
-      Math.abs(answer) >= 1e12 ||
-      Math.abs(answer) < 1e-10
-    ) {
-      continue;
-    }
-
-    const problem = {
-      family: family.name,
-      value,
-      from: fromUnit.symbol,
-      to: toUnit.symbol,
-      answer,
-      factorText: conversionFactorText(fromUnit, toUnit)
-    };
-
-    const key = makeProblemKey(problem);
-    if (!usedProblemKeys.has(key)) {
-      usedProblemKeys.add(key);
-      return problem;
+    if (!usedKeys.has(key)) {
+      usedKeys.add(key);
+      return {
+        coefficientText,
+        exponent,
+        answerText,
+        display: `${coefficientText} × 10${toSuperscript(exponent)}`
+      };
     }
   }
 
-  // This is extremely unlikely in a 10-question game, but prevents a stall.
-  usedProblemKeys.clear();
+  usedKeys.clear();
   return generateProblem();
 }
 
-function chooseProblem() {
+function renderProblem() {
   currentProblem = generateProblem();
+  awaitingNext = false;
 
-  problemEl.textContent =
-    `${formatNumber(currentProblem.value)} ${currentProblem.from} = ? ${currentProblem.to}`;
-  targetUnitEl.textContent = currentProblem.to;
+  problemEl.textContent = currentProblem.display;
   answerInput.value = "";
   answerInput.disabled = false;
   submitButton.disabled = false;
   feedbackEl.textContent = "";
   feedbackEl.className = "feedback";
-  nextButton.classList.add("hidden");
-  awaitingNext = false;
   answerInput.focus();
 }
 
-function nearlyEqual(a, b) {
-  const tolerance = Math.max(1e-10, Math.abs(b) * 1e-7);
-  return Math.abs(a - b) <= tolerance;
-}
+function createDistanceMarkers() {
+  distanceMarkersEl.innerHTML = "";
 
-function updateBalloon() {
-  const fraction = score / goal;
-  const scale = 0.7 + fraction * 0.45;
-  const rise = fraction * 52;
-
-  balloon.style.transform = `scale(${scale})`;
-  balloonWrap.style.bottom = `${14 + rise}%`;
-
-  if (score === 0) {
-    progressMessage.textContent = "Fill the balloon with 10 correct answers.";
-  } else if (score < goal) {
-    progressMessage.textContent =
-      `${goal - score} more correct answer${goal - score === 1 ? "" : "s"} until liftoff.`;
-  } else {
-    progressMessage.textContent = "Liftoff! You completed the metric challenge.";
+  for (let meters = 10; meters <= 100; meters += 10) {
+    const marker = document.createElement("div");
+    marker.className = "distance-marker";
+    marker.style.left = `${4 + (meters / 100) * 85}%`;
+    marker.dataset.label = `${meters} m`;
+    distanceMarkersEl.appendChild(marker);
   }
 }
 
-function finishGame() {
-  window.AcademySound?.play("complete");
-  problemEl.textContent = "Balloon launched!";
-  targetUnitEl.textContent = "";
-  answerInput.disabled = true;
-  submitButton.disabled = true;
-  nextButton.classList.add("hidden");
-  feedbackEl.className = "feedback correct";
-  feedbackEl.textContent =
-    "You completed 10 different metric conversions correctly.";
-  balloonWrap.style.bottom = "76%";
-  window.setTimeout(() => Academy.completeActivity("metric-balloon"), 800);
+const runnerPositions = [4, 12.5, 21, 29.5, 38, 46.5, 55, 63.5, 72, 80.5, 89];
+
+function updateProgress(moveRunner = true) {
+  const fraction = score / goal;
+
+  if (moveRunner) {
+    runnerEl.style.left = `${runnerPositions[score]}%`;
+  }
+
+  progressFillEl.style.width = `${fraction * 100}%`;
+
+
+  if (score === 0) {
+    progressMessageEl.textContent = "Reach 100 meters to finish the race.";
+  } else if (score < goal) {
+    const remainingMeters = 100 - score * 10;
+    progressMessageEl.textContent = `${remainingMeters} meters remaining.`;
+  } else {
+    progressMessageEl.textContent = "Event complete!";
+  }
 }
 
-answerForm.addEventListener("submit", (event) => {
-  event.preventDefault();
+function animateMovement() {
+  runnerEl.classList.add("run");
+  runnerEl.classList.remove("sprint-step");
+  void runnerEl.offsetWidth;
+  runnerEl.classList.add("sprint-step");
+
+  updateProgress(true);
+
+  window.setTimeout(() => {
+    runnerEl.classList.remove("sprint-step");
+  }, 650);
+}
+
+function diagnoseAnswer(userAnswer) {
+  const normalized = normalizeDecimalString(userAnswer);
+  const expected = normalizeDecimalString(currentProblem.answerText);
+
+  if (normalized === expected) {
+    return "";
+  }
+
+  if (currentProblem.exponent > 0) {
+    return `Move the decimal ${currentProblem.exponent} place${currentProblem.exponent === 1 ? "" : "s"} to the right.`;
+  }
+
+  return `Move the decimal ${Math.abs(currentProblem.exponent)} place${Math.abs(currentProblem.exponent) === 1 ? "" : "s"} to the left.`;
+}
+
+function finishEvent() {
+  problemEl.textContent = "Finish line reached!";
+  answerInput.disabled = true;
+  submitButton.disabled = true;
+  feedbackEl.className = "feedback correct";
+  feedbackEl.textContent =
+    "You completed the 100-meter dash by correctly converting 10 scientific-notation values. Returning to the campaign…";
+  runnerEl.style.left = `${runnerPositions[goal]}%`;
+  runnerEl.classList.remove("run");
+  ScientificNotationCampaign.completeMission("mission2");
+  ScientificNotationCampaign.returnToCampaign(2200);
+}
+
+function checkAnswer() {
   if (awaitingNext || score >= goal) return;
 
-  const raw = answerInput.value
-    .trim()
-    .replace(/,/g, "")
-    .replace(/[×x]\s*10\^?/i, "e");
-  const numericAnswer = Number(raw);
+  const raw = answerInput.value.trim();
 
-  if (raw === "" || !Number.isFinite(numericAnswer)) {
+  if (raw === "" || !/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(raw.replace(/,/g, ""))) {
     window.AcademySound?.play("incorrect");
     feedbackEl.className = "feedback incorrect";
-    feedbackEl.textContent =
-      "Enter a numerical value. Scientific notation such as 3.2e4 is accepted.";
+    feedbackEl.textContent = "Enter a numerical value.";
     return;
   }
 
-  if (nearlyEqual(numericAnswer, currentProblem.answer)) {
-    score += 1;
-    scoreEl.textContent = score;
-    window.AcademySound?.play("inflate");
-    feedbackEl.className = "feedback correct";
-    feedbackEl.textContent =
-      `Correct. ${formatNumber(currentProblem.value)} ${currentProblem.from} = ` +
-      `${formatNumber(currentProblem.answer)} ${currentProblem.to}.`;
+  const normalized = normalizeDecimalString(raw);
+  const expected = normalizeDecimalString(currentProblem.answerText);
+
+  if (normalized === expected) {
+    awaitingNext = true;
     answerInput.disabled = true;
     submitButton.disabled = true;
-    awaitingNext = true;
-    updateBalloon();
+
+    score += 1;
+    scoreEl.textContent = score * 10;
+    window.AcademySound?.play("step");
+    feedbackEl.className = "feedback correct";
+    feedbackEl.textContent =
+      `Correct. ${currentProblem.display} = ${currentProblem.answerText}.`;
+
+    updateProgress(false);
+    animateMovement();
 
     if (score >= goal) {
-      window.setTimeout(finishGame, 700);
+      window.setTimeout(finishEvent, 900);
     } else {
       window.setTimeout(() => {
         questionNumber += 1;
         questionNumberEl.textContent = questionNumber;
-        chooseProblem();
-      }, 900);
+        renderProblem();
+      }, 1050);
     }
   } else {
     feedbackEl.className = "feedback incorrect";
-    feedbackEl.textContent =
-      `Not yet. Use ${currentProblem.factorText}, then try again.`;
+    feedbackEl.textContent = diagnoseAnswer(raw);
     answerInput.select();
   }
-});
+}
 
-nextButton.addEventListener("click", () => {
-  questionNumber += 1;
-  questionNumberEl.textContent = questionNumber;
-  chooseProblem();
+submitButton.addEventListener("click", checkAnswer);
+
+answerInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    checkAnswer();
+  }
 });
 
 restartButton.addEventListener("click", () => {
   score = 0;
   questionNumber = 1;
-  usedProblemKeys.clear();
-  scoreEl.textContent = score;
+  awaitingNext = false;
+  usedKeys.clear();
+
+  scoreEl.textContent = "0";
   questionNumberEl.textContent = questionNumber;
-  updateBalloon();
-  chooseProblem();
+  runnerEl.style.left = `${runnerPositions[0]}%`;
+  runnerEl.classList.add("run");
+  createDistanceMarkers();
+  updateProgress();
+  renderProblem();
 });
 
-updateBalloon();
-chooseProblem();
+createDistanceMarkers();
+runnerEl.classList.add("run");
+updateProgress();
+renderProblem();
