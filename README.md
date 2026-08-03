@@ -1,23 +1,53 @@
-# Rocket Fuel Campaign
+# Sig Fig Factory v1
 
-A three-mission Chemistry Skills Academy browser campaign for dimensional analysis.
+Sig Fig Factory is a self-contained browser game for practicing the recognition
+and counting of significant figures.
 
-## Run
+## Learning objective
+Students decide how many significant figures are present in a displayed
+measurement.
 
-Open `index.html` in a modern browser. No installation or server is required.
+This first version intentionally does not include rounding calculations. The
+goal is to test and strengthen recognition of the sig fig rules before adding a
+second factory station.
 
-## Campaign progression
+## Included
+- Effectively unlimited generated questions
+- Nonzero digits
+- Leading zeros
+- Captive zeros
+- Trailing zeros after decimal points
+- Scientific notation
+- Immediate explanatory feedback after incorrect choices
+- Automatic movement to the next problem after a correct choice
+- Five randomized answer choices
+- No repeated question within the same 10-question game
+- Factory machine animation
+- One crate packed per correct answer
+- Truck departure after 10 correct answers
+- Responsive desktop and mobile layout
 
-- Mission 1: Fuel Selection
-- Mission 2: Fuel Line Assembly
-- Mission 3: Launch Calculation
+## Important design choice
+Ambiguous whole numbers such as `1200` are not used by themselves. When trailing
+zeros in a whole number matter, the game uses scientific notation so the
+intended number of significant figures is explicit.
 
-Mission progress is stored in `sessionStorage`, so it remains available while the browser session is open. Closing the browser clears campaign progress.
+## Run the game
+Open `index.html` in a browser.
 
-## Project structure
+For more reliable browser behavior:
 
-- `index.html` — campaign hub
-- `shared/` — campaign navigation, progress state, and hub styling
-- `mission1/` — Fuel Selection
-- `mission2/` — Fuel Line Assembly
-- `mission3/` — Launch Calculation
+```bash
+python -m http.server 8000
+```
+
+Then open `http://localhost:8000`.
+
+## Potential later versions
+- Rounding to a specified number of significant figures
+- Addition/subtraction decimal-place rules
+- Multiplication/division sig fig rules
+- Mixed factory stations
+- Sound effects
+- Saved student completion
+- Canvas/SCORM packaging

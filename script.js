@@ -1,229 +1,387 @@
-(() => {
-  'use strict';
+const goal = 10;
 
-  const MISSION_TOTAL = 10;
-  const CHECKLIST_ITEMS = [
-    'Fuel Tanks',
-    'Pressure Test',
-    'Guidance System',
-    'Navigation',
-    'Communications',
-    'Flight Computer',
-    'Main Engines',
-    'Weather Check',
-    'Final Systems',
-    'Launch Authorization'
-  ];
+const problemTypes = [
+  "nonzero",
+  "leadingZeros",
+  "captiveZeros",
+  "decimalTrailingZeros",
+  "scientific",
+  "exactDecimal",
+  "integerUnambiguous"
+];
 
-  const elements = {
-    familyBadge: document.getElementById('familyBadge'),
-    calculationSetup: document.getElementById('calculationSetup'),
-    answerForm: document.getElementById('answerForm'),
-    numberInput: document.getElementById('numberInput'),
-    unitInput: document.getElementById('unitInput'),
-    submitButton: document.getElementById('submitButton'),
-    feedback: document.getElementById('feedback'),
-    progressText: document.getElementById('progressText'),
-    progressFill: document.getElementById('progressFill'),
-    launchChecklist: document.getElementById('launchChecklist'),
-    fuelLiquid: document.getElementById('fuelLiquid'),
-    fuelPercent: document.getElementById('fuelPercent'),
-    gaugeNeedle: document.getElementById('gaugeNeedle'),
-    rocket: document.getElementById('rocket'),
-    smokeCloud: document.getElementById('smokeCloud'),
-    countdown: document.getElementById('countdown'),
-    missionComplete: document.getElementById('missionComplete'),
-    playAgainButton: document.getElementById('playAgainButton')
+let score = 0;
+let questionNumber = 1;
+let currentProblem = null;
+let awaitingNext = false;
+let usedKeys = new Set();
+
+const problemEl = document.getElementById("problem");
+const choicesEl = document.getElementById("choices");
+const feedbackEl = document.getElementById("feedback");
+const scoreEl = document.getElementById("score");
+const questionNumberEl = document.getElementById("question-number");
+const restartButton = document.getElementById("restart-button");
+const machineCountEl = document.getElementById("machine-count");
+const truckLabelEl = document.getElementById("truck-label");
+const progressMessageEl = document.getElementById("progress-message");
+const crateTrackEl = document.getElementById("crate-track");
+const machineEl = document.querySelector(".machine");
+const truckEl = document.getElementById("truck");
+const lights = [...document.querySelectorAll(".light")];
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randomChoice(items) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function randomNonzeroDigit() {
+  return randomInt(1, 9);
+}
+
+function randomDigits(length, allowZero = true) {
+  let result = "";
+  for (let i = 0; i < length; i += 1) {
+    result += allowZero ? randomInt(0, 9) : randomNonzeroDigit();
+  }
+  return result;
+}
+
+function buildNonzeroProblem() {
+  const digits = randomInt(2, 6);
+  const value = randomDigits(digits, false);
+  return {
+    display: value,
+    answer: digits,
+    explanation: "Every nonzero digit is significant."
+  };
+}
+
+function buildLeadingZeroProblem() {
+  const leadingZeros = randomInt(1, 5);
+  const significantDigits = randomInt(2, 5);
+  let coefficient = String(randomNonzeroDigit());
+
+  for (let i = 1; i < significantDigits; i += 1) {
+    coefficient += randomInt(0, 9);
+  }
+
+  const display = `0.${"0".repeat(leadingZeros)}${coefficient}`;
+
+  return {
+    display,
+    answer: significantDigits,
+    explanation:
+      `The ${leadingZeros + 1} zero${leadingZeros + 1 === 1 ? "" : "s"} before the first nonzero digit are leading zeros, so they are not significant.`
+  };
+}
+
+function buildCaptiveZeroProblem() {
+  const left = randomDigits(randomInt(1, 2), false);
+  const zeroCount = randomInt(1, 3);
+  const right = randomDigits(randomInt(1, 2), false);
+  const useDecimal = Math.random() < 0.45;
+  const display = useDecimal
+    ? `${left}.${"0".repeat(zeroCount)}${right}`
+    : `${left}${"0".repeat(zeroCount)}${right}`;
+
+  return {
+    display,
+    answer: left.length + zeroCount + right.length,
+    explanation: "Zeros between nonzero digits are captive zeros and are significant."
+  };
+}
+
+function buildDecimalTrailingZeroProblem() {
+  const whole = Math.random() < 0.45 ? "0" : String(randomNonzeroDigit());
+  const coreLength = randomInt(1, 3);
+  let core = "";
+
+  if (whole === "0") {
+    const leadingZeros = randomInt(0, 2);
+    core = `${"0".repeat(leadingZeros)}${randomNonzeroDigit()}${randomDigits(coreLength - 1)}`;
+  } else {
+    core = randomDigits(coreLength);
+  }
+
+  const trailingZeros = randomInt(1, 3);
+  const display = `${whole}.${core}${"0".repeat(trailingZeros)}`;
+
+  let significantPart = `${whole}${core}${"0".repeat(trailingZeros)}`;
+  significantPart = significantPart.replace(/^0+/, "");
+
+  return {
+    display,
+    answer: significantPart.length,
+    explanation:
+      "Trailing zeros to the right of a decimal point are significant."
+  };
+}
+
+function buildScientificProblem() {
+  const significantDigits = randomInt(2, 6);
+  let coefficient = String(randomNonzeroDigit());
+
+  if (significantDigits > 1) {
+    coefficient += `.${randomDigits(significantDigits - 1)}`;
+  }
+
+  const exponent = randomInt(-8, 8);
+  const signedExponent = exponent >= 0 ? `+${exponent}` : `${exponent}`;
+
+  return {
+    display: `${coefficient} × 10${toSuperscript(signedExponent)}`,
+    answer: significantDigits,
+    explanation:
+      "In scientific notation, only the digits in the coefficient determine the significant figures."
+  };
+}
+
+function buildExactDecimalProblem() {
+  const whole = randomInt(1, 999);
+  const decimalDigits = randomInt(1, 3);
+  const decimalPart = randomDigits(decimalDigits);
+  const display = `${whole}.${decimalPart}`;
+  const answer = String(whole).length + decimalDigits;
+
+  return {
+    display,
+    answer,
+    explanation:
+      "All nonzero digits and any zeros between or after measured decimal digits are significant."
+  };
+}
+
+function buildIntegerUnambiguousProblem() {
+  const significantDigits = randomInt(2, 5);
+  let coefficient = String(randomNonzeroDigit());
+
+  if (significantDigits > 1) {
+    coefficient += `.${randomDigits(significantDigits - 1)}`;
+  }
+
+  const exponent = randomInt(2, 6);
+
+  return {
+    display: `${coefficient} × 10${toSuperscript(`+${exponent}`)}`,
+    answer: significantDigits,
+    explanation:
+      "Scientific notation removes ambiguity: count the digits in the coefficient."
+  };
+}
+
+function toSuperscript(value) {
+  const map = {
+    "-": "⁻",
+    "+": "⁺",
+    "0": "⁰",
+    "1": "¹",
+    "2": "²",
+    "3": "³",
+    "4": "⁴",
+    "5": "⁵",
+    "6": "⁶",
+    "7": "⁷",
+    "8": "⁸",
+    "9": "⁹"
   };
 
-  const state = {
-    correctCount: 0,
-    question: null,
-    locked: false,
-    completed: false
-  };
+  return String(value)
+    .split("")
+    .map((character) => map[character] ?? character)
+    .join("");
+}
 
-  function escapeHtml(value) {
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
+function generateProblem() {
+  for (let attempt = 0; attempt < 250; attempt += 1) {
+    const type = randomChoice(problemTypes);
+    let problem;
 
-  function numberMarkup(value) {
-    return escapeHtml(ConversionEngine.formatNumber(value));
-  }
-
-  function fractionMarkup(factor) {
-    return `
-      <span class="paper-factor">
-        <span class="paper-numerator">
-          <b>${numberMarkup(factor.numeratorValue)}</b>
-          <span class="cancel-unit">${escapeHtml(factor.numeratorUnit)}</span>
-        </span>
-        <span class="paper-fraction-line"></span>
-        <span class="paper-denominator">
-          <b>${numberMarkup(factor.denominatorValue)}</b>
-          <span class="cancel-unit canceled-unit">${escapeHtml(factor.denominatorUnit)}</span>
-        </span>
-      </span>
-    `;
-  }
-
-  function renderCalculation() {
-    const q = state.question;
-    const factorHtml = q.factors.map(factor => `
-      <span class="multiply-symbol" aria-hidden="true">×</span>
-      ${fractionMarkup(factor)}
-    `).join('');
-
-    elements.calculationSetup.innerHTML = `
-      <span class="starting-quantity">
-        <b>${numberMarkup(q.startValue)}</b>
-        <span class="cancel-unit canceled-unit">${escapeHtml(q.source.symbol)}</span>
-      </span>
-      ${factorHtml}
-      <span class="equals-symbol" aria-hidden="true">=</span>
-      <span class="question-mark">?</span>
-    `;
-  }
-
-  function renderChecklist() {
-    elements.launchChecklist.innerHTML = '';
-    CHECKLIST_ITEMS.forEach((item, index) => {
-      const row = document.createElement('li');
-      if (index < state.correctCount) row.classList.add('complete');
-      if (index === state.correctCount && !state.completed) row.classList.add('current');
-      row.innerHTML = `<span class="check-icon">${index < state.correctCount ? '✓' : '○'}</span><span>${escapeHtml(item)}</span>`;
-      elements.launchChecklist.appendChild(row);
-    });
-  }
-
-  function renderQuestion() {
-    state.question = ConversionEngine.generateQuestion();
-    state.locked = false;
-    elements.familyBadge.textContent = state.question.familyLabel;
-    elements.familyBadge.dataset.family = state.question.familyKey;
-    elements.numberInput.value = '';
-    elements.unitInput.value = '';
-    elements.numberInput.className = '';
-    elements.unitInput.className = '';
-    elements.feedback.className = 'feedback';
-    elements.feedback.textContent = '';
-    elements.submitButton.disabled = false;
-    renderCalculation();
-    requestAnimationFrame(() => elements.numberInput.focus());
-  }
-
-  function updateProgress() {
-    const percent = Math.min((state.correctCount / MISSION_TOTAL) * 100, 100);
-    elements.progressText.textContent = `${state.correctCount} / ${MISSION_TOTAL} authorized`;
-    elements.progressFill.style.width = `${percent}%`;
-    elements.fuelLiquid.style.height = `${percent}%`;
-    elements.fuelPercent.textContent = `${Math.round(percent)}%`;
-    elements.gaugeNeedle.style.transform = `rotate(${-70 + percent * 1.4}deg)`;
-    renderChecklist();
-  }
-
-  function handleSubmit(event) {
-    event.preventDefault();
-    if (state.locked || state.completed) return;
-
-    const result = ConversionEngine.evaluateAnswer(
-      elements.numberInput.value,
-      elements.unitInput.value,
-      state.question
-    );
-
-    elements.numberInput.classList.toggle('entry-correct', result.numberCorrect);
-    elements.numberInput.classList.toggle('entry-guidance', !result.numberCorrect);
-    elements.unitInput.classList.toggle('entry-correct', result.unitCorrect);
-    elements.unitInput.classList.toggle('entry-guidance', !result.unitCorrect);
-
-    if (!result.correct) {
-      window.AcademySound?.play('incorrect');
-      window.AcademySound?.play('incorrect');
-    elements.feedback.className = 'feedback guidance-feedback';
-      elements.feedback.textContent = result.message;
-      if (!result.numberCorrect) elements.numberInput.focus();
-      else elements.unitInput.focus();
-      return;
+    switch (type) {
+      case "nonzero":
+        problem = buildNonzeroProblem();
+        break;
+      case "leadingZeros":
+        problem = buildLeadingZeroProblem();
+        break;
+      case "captiveZeros":
+        problem = buildCaptiveZeroProblem();
+        break;
+      case "decimalTrailingZeros":
+        problem = buildDecimalTrailingZeroProblem();
+        break;
+      case "scientific":
+        problem = buildScientificProblem();
+        break;
+      case "exactDecimal":
+        problem = buildExactDecimalProblem();
+        break;
+      default:
+        problem = buildIntegerUnambiguousProblem();
     }
 
-    state.locked = true;
-    elements.submitButton.disabled = true;
-    window.AcademySound?.play('correct');
-    elements.feedback.className = 'feedback correct-feedback';
-    elements.feedback.textContent = result.message;
-    state.correctCount += 1;
+    const key = `${problem.display}|${problem.answer}`;
+    if (!usedKeys.has(key)) {
+      usedKeys.add(key);
+      return problem;
+    }
+  }
+
+  usedKeys.clear();
+  return generateProblem();
+}
+
+function makeChoices(correctAnswer) {
+  const choices = new Set([correctAnswer]);
+
+  while (choices.size < 5) {
+    const offset = randomChoice([-3, -2, -1, 1, 2, 3]);
+    const candidate = correctAnswer + offset;
+    if (candidate >= 1 && candidate <= 9) {
+      choices.add(candidate);
+    }
+  }
+
+  return [...choices].sort(() => Math.random() - 0.5);
+}
+
+function renderProblem() {
+  currentProblem = generateProblem();
+  awaitingNext = false;
+  problemEl.textContent = currentProblem.display;
+  feedbackEl.textContent = "";
+  feedbackEl.className = "feedback";
+  choicesEl.innerHTML = "";
+
+  for (const choice of makeChoices(currentProblem.answer)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "choice-button";
+    button.textContent = choice;
+    button.dataset.value = String(choice);
+    button.addEventListener("click", () => checkAnswer(button, choice));
+    choicesEl.appendChild(button);
+  }
+}
+
+function disableChoices() {
+  const buttons = [...choicesEl.querySelectorAll("button")];
+  for (const button of buttons) {
+    button.disabled = true;
+  }
+}
+
+function checkAnswer(button, choice) {
+  if (awaitingNext || score >= goal) return;
+
+  if (choice === currentProblem.answer) {
+    awaitingNext = true;
+    disableChoices();
+    button.classList.add("correct-choice");
+
+    score += 1;
+    scoreEl.textContent = score;
+    machineCountEl.textContent = score;
+    truckLabelEl.textContent = `${score}/${goal}`;
+    window.AcademySound?.play("crate");
+    feedbackEl.className = "feedback correct";
+    feedbackEl.textContent =
+      `Correct — ${currentProblem.display} has ${currentProblem.answer} significant figure${currentProblem.answer === 1 ? "" : "s"}.`;
+
+    animatePackedCrate();
     updateProgress();
 
-    if (state.correctCount >= MISSION_TOTAL) {
-      state.completed = true;
-      setTimeout(startLaunchSequence, 950);
+    if (score >= goal) {
+      window.setTimeout(finishFactory, 1050);
     } else {
-      setTimeout(renderQuestion, 1050);
+      window.setTimeout(() => {
+        questionNumber += 1;
+        questionNumberEl.textContent = questionNumber;
+        renderProblem();
+      }, 1150);
     }
+  } else {
+    button.disabled = true;
+    button.classList.add("wrong-choice");
+    window.AcademySound?.play("incorrect");
+    feedbackEl.className = "feedback incorrect";
+    feedbackEl.textContent = `Not yet. ${currentProblem.explanation}`;
+    activateLight("wrong");
   }
+}
 
-  function delay(milliseconds) {
-    return new Promise(resolve => setTimeout(resolve, milliseconds));
+function activateLight(state) {
+  lights.forEach((light) => light.classList.remove("active"));
+
+  if (state === "correct") {
+    lights[0].classList.add("active");
+  } else if (state === "waiting") {
+    lights[1].classList.add("active");
+  } else if (state === "wrong") {
+    lights[2].classList.add("active");
   }
+}
 
-  async function startLaunchSequence() {
-    document.body.classList.add('mission-ending');
-    elements.submitButton.disabled = true;
-    elements.feedback.className = 'feedback correct-feedback';
-    elements.feedback.textContent = 'All launch calculations authorized. Launch sequence initiated.';
+function animatePackedCrate() {
+  machineEl.classList.remove("processing");
+  void machineEl.offsetWidth;
+  machineEl.classList.add("processing");
+  activateLight("correct");
 
-    await delay(700);
-    elements.countdown.setAttribute('aria-hidden', 'false');
+  const crate = document.createElement("div");
+  crate.className = "crate";
+  crateTrackEl.appendChild(crate);
 
-    for (const number of ['3', '2', '1']) {
-      elements.countdown.textContent = number;
-      window.AcademySound?.play('countdown');
-      elements.countdown.classList.remove('pulse');
-      void elements.countdown.offsetWidth;
-      elements.countdown.classList.add('pulse');
-      await delay(850);
-    }
+  window.setTimeout(() => {
+    crate.remove();
+    activateLight("waiting");
+  }, 1000);
+}
 
-    elements.countdown.textContent = 'IGNITION';
-    elements.rocket.classList.add('ignition');
-    elements.smokeCloud.classList.add('active');
-    await delay(900);
-
-    elements.countdown.textContent = '';
-    window.AcademySound?.play('launch');
-    elements.rocket.classList.add('launching');
-    await delay(3300);
-
-    elements.countdown.setAttribute('aria-hidden', 'true');
-    elements.missionComplete.setAttribute('aria-hidden', 'false');
-    elements.missionComplete.classList.add('show');
-    RocketFuelCampaign.completeMission(3);
-    await delay(1200);
-    Academy.completeActivity("rocket-fuel");
+function updateProgress() {
+  if (score === 0) {
+    progressMessageEl.textContent = "Pack 10 crates to send the truck.";
+  } else if (score < goal) {
+    const remaining = goal - score;
+    progressMessageEl.textContent =
+      `${remaining} more crate${remaining === 1 ? "" : "s"} until the truck departs.`;
+  } else {
+    progressMessageEl.textContent = "Shipment complete — the truck is leaving!";
   }
+}
 
-  function resetMission() {
-    state.correctCount = 0;
-    state.locked = false;
-    state.completed = false;
-    document.body.classList.remove('mission-ending');
-    elements.rocket.className = 'rocket';
-    elements.smokeCloud.className = 'smoke-cloud';
-    elements.missionComplete.className = 'mission-complete';
-    elements.missionComplete.setAttribute('aria-hidden', 'true');
-    elements.countdown.textContent = '';
-    elements.countdown.setAttribute('aria-hidden', 'true');
-    updateProgress();
-    renderQuestion();
-  }
+function finishFactory() {
+  window.AcademySound?.play("engine");
+  problemEl.textContent = "Shipment complete!";
+  choicesEl.innerHTML = "";
+  feedbackEl.className = "feedback correct";
+  feedbackEl.textContent =
+    "You correctly counted the significant figures in 10 different measurements.";
+  truckEl.classList.add("depart");
+  activateLight("correct");
+  window.setTimeout(() => Academy.completeActivity("sig-fig-factory"), 1450);
+}
 
-  elements.answerForm.addEventListener('submit', handleSubmit);
-  elements.playAgainButton.addEventListener('click', RocketFuelCampaign.returnToCampaign);
-  resetMission();
-})();
+restartButton.addEventListener("click", () => {
+  score = 0;
+  questionNumber = 1;
+  awaitingNext = false;
+  usedKeys.clear();
+
+  scoreEl.textContent = score;
+  questionNumberEl.textContent = questionNumber;
+  machineCountEl.textContent = score;
+  truckLabelEl.textContent = `0/${goal}`;
+  truckEl.classList.remove("depart");
+
+  activateLight("waiting");
+  updateProgress();
+  renderProblem();
+});
+
+activateLight("waiting");
+updateProgress();
+renderProblem();
