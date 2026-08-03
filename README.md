@@ -1,36 +1,28 @@
-# Sig Fig Factory v1
+# Metric Balloon v1.2
 
-Sig Fig Factory is a self-contained browser game for practicing the recognition
-and counting of significant figures.
-
-## Learning objective
-Students decide how many significant figures are present in a displayed
-measurement.
-
-This first version intentionally does not include rounding calculations. The
-goal is to test and strengthen recognition of the sig fig rules before adding a
-second factory station.
+Version 1.2 replaces the small fixed question bank with an effectively unlimited
+metric-conversion question generator.
 
 ## Included
-- Effectively unlimited generated questions
-- Nonzero digits
-- Leading zeros
-- Captive zeros
-- Trailing zeros after decimal points
-- Scientific notation
-- Immediate explanatory feedback after incorrect choices
-- Automatic movement to the next problem after a correct choice
-- Five randomized answer choices
-- No repeated question within the same 10-question game
-- Factory machine animation
-- One crate packed per correct answer
-- Truck departure after 10 correct answers
+- Randomly generated length, mass, and volume conversions
+- Units ranging from kilo- through micro-
+- Varied starting values, decimal locations, and conversion directions
+- No repeated question within a single 10-question game
+- Automatic answer calculation and checking
+- Numerical answers and `e` scientific notation accepted
+- Conversion-factor hints after incorrect answers
+- Automatic advance after a correct answer
+- Balloon progress and launch after 10 correct answers
 - Responsive desktop and mobile layout
 
-## Important design choice
-Ambiguous whole numbers such as `1200` are not used by themselves. When trailing
-zeros in a whole number matter, the game uses scientific notation so the
-intended number of significant figures is explicit.
+## Current unit families
+- Length: km, m, cm, mm, µm
+- Mass: kg, g, mg, µg
+- Volume: kL, L, mL, µL
+
+The generator combines many coefficients, powers of ten, unit families, source
+units, and target units. This creates tens of thousands of readable combinations
+before considering the randomized order of play.
 
 ## Run the game
 Open `index.html` in a browser.
@@ -43,11 +35,11 @@ python -m http.server 8000
 
 Then open `http://localhost:8000`.
 
-## Potential later versions
-- Rounding to a specified number of significant figures
-- Addition/subtraction decimal-place rules
-- Multiplication/division sig fig rules
-- Mixed factory stations
+## Still intentionally excluded
+- Required significant-figure formatting
+- Timed modes
+- Saved student results
+- Canvas/SCORM tracking
 - Sound effects
-- Saved student completion
-- Canvas/SCORM packaging
+- Multiple visual themes
+- Adaptive difficulty
